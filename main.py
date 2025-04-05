@@ -180,9 +180,9 @@ def caminho_medio(grafo):
     return soma / total_pares if total_pares > 0 else 0
 
 def calc_densidade(grafo):
-    num_vertices = len(grafo)  #Número de vértices
-    num_arestas = quantidade_arestas(grafo)  # Número de arestas
-    num_arcos = quantidade_arcos(grafo)  # Número de arcos
+    num_vertices = len(grafo)  
+    num_arestas = quantidade_arestas(grafo)  
+    num_arcos = quantidade_arcos(grafo)  
 
     # Max de arcos e arestas
     arcs_max = num_vertices * (num_vertices - 1)
