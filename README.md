@@ -16,9 +16,10 @@ O objetivo principal é desenvolver uma solução eficiente para um problema de 
 
 ```
 /
-├── graph.py  # Classe base para representação do grafo
+├── main.py  # Classe base para representação do grafo
 ├── README.md # Documentação do projeto
 └── .gitignore # Arquivos a serem ignorados pelo Git
+└──BHW1.dat # Arquivo .dat para representação do grafo
 ```
 
 ## 🛠 Tecnologias Utilizadas (Até o momento)
