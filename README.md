@@ -4,44 +4,38 @@
 
 Este repositório contém a implementação do Trabalho Prático Final da disciplina **GCC218 - Algoritmos em Grafos**,projeto ainda está em produção,sendo atualizado sempre que alguma alteração seja realizada.
 
-## 📌 Objetivo
+- Leitura e processamento de arquivos contendo informações sobre vértices, arestas e arcos.
+- Cálculo de métricas importantes do grafo, como número de vértices, arestas, arcos, caminho médio, densidade, diâmetro e medidas de centralidade.
+- Visualização gráfica dos dados do grafo utilizando o Matplotlib.
 
-O objetivo principal é desenvolver uma solução eficiente para um problema de roteamento de veículos considerando:
-- Um **grafo conexo** onde **arestas** e **arcos** representam vias de acesso.
-- Um subconjunto de **arestas e arcos requeridos** que devem ser atendidos.
-- Uma capacidade máxima para os veículos.
-- O objetivo de **minimizar o custo total** das viagens.
+## Descrição
 
-## 📂 Estrutura do Projeto
+O **ProjetoGrafos** visa facilitar a análise e visualização de dados de grafos por meio de funções modulares. O sistema permite importar dados a partir de um arquivo de texto e realizar diversos cálculos estatísticos e métricas, além de gerar gráficos que ajudam na compreensão da estrutura do grafo.
 
-```
-/
-├── main.py  # Classe base para representação do grafo
-├── README.md # Documentação do projeto
-└── .gitignore # Arquivos a serem ignorados pelo Git
-└──BHW1.dat # Arquivo .dat para representação do grafo
-```
+## Funcionalidades
 
-## 🛠 Tecnologias Utilizadas (Até o momento)
+- **Leitura e Processamento de Arquivos:** Interpreta arquivos com informações estruturadas de vértices, arestas e arcos (incluindo dados obrigatórios).
+- **Cálculo de Métricas:** 
+  - Quantidade de vértices, arestas e arcos.
+  - Caminho médio entre vértices.
+  - Densidade e diâmetro do grafo.
+  - Cálculo de graus e medidas de centralidade (intermediação).
+- **Visualização Gráfica:** Geração de gráficos de barras para visualização dos graus totais dos vértices e da intermediação utilizando a biblioteca Matplotlib.
 
-- **Python 3.13.2**
+## Tecnologias Utilizadas
 
-## 🚀 Como Executar
+- **Python 3.13.3**
+- **Pandas:** Para manipulação e análise dos dados.
+- **Matplotlib:** Para geração de gráficos e visualizações.
 
-1. Clone o repositório:
-   ```bash
-   git clone https://github.com/seu-usuario/seu-repositorio.git
-   cd seu-repositorio
-   ```
-2. Execute o script principal:
-   ```bash
-   python graph.py
-   ```
+## Pré-requisitos
 
-## 📝 Próximos Passos
+Antes de executar o projeto, certifique-se de ter instalado:
+- Python 
+- As bibliotecas necessárias (Colocar esse comando no terminal do VsCode:
+  ```bash
+  pip install pandas matplotlib
 
-1. XXXX
-2. XXXX
 
 ## 📜 Licença
 
