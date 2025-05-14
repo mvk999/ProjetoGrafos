@@ -1,0 +1,9 @@
+Custo total da solução: 578
+Total de rotas: 5
+⏱️ Tempo total: 55432000 ns
+clocks totais do algoritimo referência: 166296000 clocks
+Route 1: 7 12 1 4 11 5 6 12 1 10 9 2 3 5 6 12 1
+Route 2: 1 10 9 10 8 7 12 1
+Route 3: 1 10 9 2 3 5 6 12 1 4 11 5 6 12 1
+Route 4: 1 4 11 3 5 6 12 1 7 12 1
+Route 5: 1 10 8 7 12 1 2 4 11 5 6 12 1
