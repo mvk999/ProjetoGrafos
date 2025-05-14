@@ -12,6 +12,7 @@
 # - Cálculo da intermediação (frequência de um nó em caminhos mais curtos) Feito
 # - Cálculo do caminho médio Feito
 # - Determinação do diâmetro  Feito
+
 class Graph:
     #criação do vetor dos vertices,aretas e arcos
     def __init__(self):
@@ -39,7 +40,8 @@ def read_file(path):
         print(f"Erro ao ler o arquivo: {e}")
         exit()
 
-    # Inicializa os conjuntos e variáveis
+    # Inicializa os dados
+    header = {}
     vertices = set()
     arestas = set()
     arcos = set()
@@ -51,11 +53,19 @@ def read_file(path):
     for linha in linhas:
         linha = linha.strip()
 
-        # Ignora linhas vazias ou comentários
-        if not linha or linha.startswith("//") or linha.startswith("Name:"):
+        
+        if linha.startswith("Optimal value:") or linha.startswith("Capacity:") or \
+           linha.startswith("Depot Node:") or linha.startswith("#Nodes:") or \
+           linha.startswith("#Edges:") or linha.startswith("#Arcs:") or \
+           linha.startswith("#Required N:") or linha.startswith("#Required E:") or \
+           linha.startswith("#Required A:"):
+            chave, valor = linha.split(":", 1)
+            header[chave.strip()] = valor.strip()
             continue
 
-        # Identifica a seção atual com base no prefixo
+        if not linha or linha.startswith("//"):
+            continue
+
         if linha.startswith("ReN."):
             secao_atual = "ReN"
             continue
@@ -76,7 +86,6 @@ def read_file(path):
             partes = linha.split("\t")
             try:
                 if secao_atual == "ReN":
-                    # Processa vértices obrigatórios
                     vertice = int(partes[0].replace("N", ""))
                     demanda = int(partes[1])
                     custo_servico = int(partes[2])
@@ -84,21 +93,18 @@ def read_file(path):
                     vertices.add(vertice)
 
                 elif secao_atual in ["ReE", "EDGE"]:
-                    # Processa arestas
                     origem, destino = int(partes[1]), int(partes[2])
                     vertices.update([origem, destino])
                     aresta = (min(origem, destino), max(origem, destino))
                     custo_transporte = int(partes[3])
                     arestas.add((aresta, custo_transporte))
 
-                if secao_atual == "ReE":
-                        # Processa arestas obrigatórias
+                    if secao_atual == "ReE":
                         demanda = int(partes[4])
                         custo_servico = int(partes[5])
                         arestas_requeridas.add((aresta, (custo_transporte, demanda, custo_servico)))
 
                 elif secao_atual in ["ReA", "ARC"]:
-                    # Processa arcos
                     origem, destino = int(partes[1]), int(partes[2])
                     vertices.update([origem, destino])
                     arco = (origem, destino)
@@ -106,7 +112,6 @@ def read_file(path):
                     arcos.add((arco, custo_transporte))
 
                     if secao_atual == "ReA":
-                        # Processa arcos obrigatórios
                         demanda = int(partes[4])
                         custo_servico = int(partes[5])
                         arcos_requeridos.add((arco, (custo_transporte, demanda, custo_servico)))
@@ -118,7 +123,8 @@ def read_file(path):
         print("Erro: Nenhum vértice encontrado no arquivo.")
         exit()
 
-    return vertices, arestas, arcos, vertices_requeridos, arestas_requeridas, arcos_requeridos
+    return header, vertices, arestas, arcos, vertices_requeridos, arestas_requeridas, arcos_requeridos
+
 
 
 def validar_grafo(vertices, arestas, arcos):
@@ -183,23 +189,32 @@ def quantidade_arcos(grafo):
     return arcos // 2
 
 def floyd_warshall(vertices, edges, arcs):
-    #Tive que mudar o alg pq estava calculando errado,definindo os vertices,arestas e arcos,etc igual o algoritmo original
+    """
+    Calcula a matriz de distâncias e predecessores usando Floyd-Warshall,
+    considerando custos nas arestas e arcos.
+    """
+    # Inicializa as matrizes
     dist = {v: {u: float('inf') for u in vertices} for v in vertices}
     pred = {v: {u: None for u in vertices} for v in vertices}
 
     for v in vertices:
         dist[v][v] = 0
 
-    for (u, v), cost in edges:
+    # Preenche com arestas (não direcionadas)
+    for (u, v), dados in edges:
+        cost = dados if isinstance(dados, int) else dados[0]
         dist[u][v] = cost
         dist[v][u] = cost
         pred[u][v] = u
         pred[v][u] = v
 
-    for (u, v), cost in arcs:
+    # Preenche com arcos (direcionados)
+    for (u, v), dados in arcs:
+        cost = dados if isinstance(dados, int) else dados[0]
         dist[u][v] = cost
         pred[u][v] = u
 
+    # Algoritmo principal
     for k in vertices:
         for i in vertices:
             for j in vertices:
@@ -270,32 +285,109 @@ def calc_intermediacao(vertices, matriz_pred):
                         intermediacao[v] += 1
     return intermediacao
 
+
+def clarke_wright(deposito, required_vertices, edges, arcs, capacidade, matriz_pred, matriz_dist):
+    from itertools import combinations
+
+    # Mapeamento de demandas
+    demandas = {v: dem[0] for v, dem in required_vertices}
+    if deposito in demandas:
+        demandas.pop(deposito)  # depósito não tem demanda
+
+    # Inicializa rotas individuais
+    rotas = {v: [deposito, v, deposito] for v in demandas}
+
+    # Dicionário de custos reais (usando matriz de distâncias)
+    custos = {}
+    for (u, v), _ in list(edges) + list(arcs):
+        custos[(u, v)] = matriz_dist[u][v]
+        custos[(v, u)] = matriz_dist[v][u]
+
+    # Savings: quanto se economiza unindo duas rotas
+    savings = []
+    for i, j in combinations(demandas.keys(), 2):
+        ci = matriz_dist[deposito][i]
+        cj = matriz_dist[deposito][j]
+        cij = matriz_dist[i][j]
+
+        if ci != float('inf') and cj != float('inf') and cij != float('inf'):
+            s = ci + cj - cij
+            savings.append(((i, j), s))
+
+    savings.sort(key=lambda x: x[1], reverse=True)
+
+    # União das rotas
+    for (i, j), _ in savings:
+        rota_i = rotas.get(i)
+        rota_j = rotas.get(j)
+
+        if not rota_i or not rota_j or rota_i == rota_j:
+            continue
+
+        if rota_i[-2] == i and rota_j[1] == j:
+            demanda_total = sum(demandas[v] for v in rota_i[1:-1] + rota_j[1:-1])
+            if demanda_total <= capacidade:
+                nova_rota = rota_i[:-1] + rota_j[1:]
+                for v in nova_rota:
+                    if v != deposito:
+                        rotas[v] = nova_rota
+
+    # Remover duplicatas e manter apenas rotas únicas
+    rotas_finais = []
+    vistas = set()
+    for rota in rotas.values():
+        t = tuple(rota)
+        if t not in vistas:
+            vistas.add(t)
+            rotas_finais.append(rota)
+
+    # Caminhos reais e custo total
+    custo_total = 0
+    rotas_reais = []
+    for rota in rotas_finais:
+        rota_real = []
+        for i in range(len(rota) - 1):
+            u, v = rota[i], rota[i+1]
+            caminho = caminho_minimo(matriz_pred, u, v)
+            if not caminho:
+                print(f"⚠️ Sem caminho entre {u} e {v}")
+                continue
+            if not rota_real:
+                rota_real.extend(caminho)
+            else:
+                rota_real.extend(caminho[1:])
+            custo_total += matriz_dist[u][v]
+        rotas_reais.append(rota_real)
+
+    return rotas_reais, custo_total
+
+
 if __name__ == "__main__":
-    nome_arquivo = input("Digite o nome do arquivo/caminho: ").strip()
 
+    nome_arquivo = "GrafosDeTeste/" + input("Digite o nome do arquivo/caminho: ").strip()
     resultado = read_file(nome_arquivo)
+    
 
-    # Verificar se esta lendo arquivo,por algum motivo nao estava lendo antes
     if resultado is None:
         print("Erro ao carregar o grafo")
         exit()
 
-    vertices, edges, arcs, required_vertices, required_edges, key_arcs = resultado
+    header, vertices, edges, arcs, required_vertices, required_edges, key_arcs = resultado
+    
+    optimalvalue = int(header["Optimal value"])
+    capacidade = int(header["Capacity"])
+    deposito = int(header["Depot Node"])
 
-    # Verifica se o grafo está vazio
     if not vertices:
         print("Erro: Grafo vazio.")
         exit()
 
-    # Converte os dados para um dicionário de adjacência
     grafo = {v: [] for v in vertices}
 
-    # Adiciona as arestas ao grafo
     for (u, v), _ in edges:
         grafo[u].append(v)
         grafo[v].append(u)
 
-    # Adiciona os arcos ao grafo
     for (u, v), _ in arcs:
         grafo[u].append(v)
 
@@ -307,13 +399,21 @@ if __name__ == "__main__":
     print("Quantidade de arcos:", quantidade_arcos(grafo))
     print("Quantidade de vértices requeridos:", len(required_vertices))
     print("Quantidade de arestas requeridas:", len(required_edges))
-    print("Quantidade de arcos requeridos:", len(key_arcs))# agr foi,era um erro no momento da leitura do arco que estava com o vetor invalido
+    print("Quantidade de arcos requeridos:", len(key_arcs))
     print("Grau máximo e mínimo:")
     imprimir_graus(calcular_graus(vertices, edges, arcs))
     print("Caminho médio:", round(caminho_medio(vertices, edges, arcs), 2))
     print("Densidade do grafo:", round(calc_densidade(len(edges), len(arcs), len(vertices)), 2))
-    matriz_distancias, _ = floyd_warshall(vertices, edges, arcs)  # Desempacota apenas a matriz de distâncias
+    matriz_distancias, _ = floyd_warshall(vertices, edges, arcs)
     print("Diâmetro do grafo:", calc_diametro(matriz_distancias))   
     matriz_pred = criar_matriz_predecessores(vertices, edges, arcs)
     print("Intermediação de cada vértice:", calc_intermediacao(vertices, matriz_pred))
     print("-------------------------------------------------------------------------------------------------------------------")
+
+
+    print("\n------------------ ROTEAMENTO COM CLARKE & WRIGHT ------------------")
+    matriz_dist, matriz_pred = floyd_warshall(vertices, edges, arcs)
+    rotas, custo_total = clarke_wright(deposito, required_vertices, edges, arcs, capacidade, matriz_pred, matriz_dist)
+    for i, rota in enumerate(rotas, 1):
+        print(f"Rota {i}: {' → '.join(map(str, rota))}")
+    print("Custo total das rotas:", round(custo_total, 2))
