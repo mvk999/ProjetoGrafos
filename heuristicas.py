@@ -1,17 +1,17 @@
 from leitura import caminho_minimo
 
 class Demanda:
-    def __init__(self, origem, destino, custo, demanda, tipo):
+    def __init__(self, origem, destino, custo, demanda, tipo, id_servico):
         self.u = origem
         self.v = destino
         self.custo = custo
         self.demanda = demanda
         self.tipo = tipo
+        self.id = id_servico
 
 def clarke_wright_completo(demandas, dist, pred, deposito, Q):
-    rotas = [[d] for d in demandas]  # cada rota começa com um único serviço
+    rotas = [[d] for d in demandas]
     savings = []
-
     for i in range(len(demandas)):
         for j in range(i + 1, len(demandas)):
             d1 = demandas[i]
@@ -21,10 +21,8 @@ def clarke_wright_completo(demandas, dist, pred, deposito, Q):
     savings.sort(reverse=True)
 
     for _, i, j in savings:
-        r1 = rotas[i]
-        r2 = rotas[j]
-        if r1 is r2:
-            continue
+        r1, r2 = rotas[i], rotas[j]
+        if r1 is r2: continue
         total_d = sum(d.demanda for d in r1 + r2)
         if total_d <= Q:
             nova_rota = r1 + r2
@@ -32,7 +30,6 @@ def clarke_wright_completo(demandas, dist, pred, deposito, Q):
                 if rotas[k] is r1 or rotas[k] is r2:
                     rotas[k] = nova_rota
 
-    # Elimina duplicatas de referência
     rotas_finais = []
     for r in rotas:
         if r not in rotas_finais:
@@ -57,59 +54,9 @@ def clarke_wright_completo(demandas, dist, pred, deposito, Q):
         custo_total += dist[atual][deposito]
         rotas_reais.append(caminho)
 
-    return rotas_reais, custo_total, rotas_finais  # adiciona lista de demandas por rota
+    return rotas_reais, custo_total, rotas_finais
 
-
-def melhorar_rotas(rotas, dist, demandas_por_rota, deposito, Q):
-    novas_rotas = []
-    usadas = [False] * len(rotas)
-
-    for i in range(len(rotas)):
-        if usadas[i]:
-            continue
-        rota_i = rotas[i]
-        demandas_i = demandas_por_rota[i]
-        carga_i = sum(d.demanda for d in demandas_i)
-
-        melhor_rota = rota_i[:]
-        melhor_demandas = demandas_i[:]
-        melhor_custo = sum(dist[melhor_rota[k]][melhor_rota[k+1]] for k in range(len(melhor_rota)-1))
-
-        for j in range(i+1, len(rotas)):
-            if usadas[j]:
-                continue
-            demandas_j = demandas_por_rota[j]
-            carga_j = sum(d.demanda for d in demandas_j)
-
-            if carga_i + carga_j > Q:
-                continue  # NÃO junta se ultrapassar capacidade
-
-            rota_j = rotas[j]
-            tentativa = rota_i[:-1] + rota_j[1:]
-            custo_tentativa = sum(dist[tentativa[k]][tentativa[k+1]] for k in range(len(tentativa)-1))
-
-            if custo_tentativa < melhor_custo:
-                melhor_rota = tentativa
-                melhor_demandas = demandas_i + demandas_j
-                melhor_custo = custo_tentativa
-                carga_i += carga_j
-                usadas[j] = True
-
-        novas_rotas.append(melhor_rota)
-        usadas[i] = True
-
-    return novas_rotas
-
-def calcular_custo_rota(rota, dist, deposito):
-    atual = deposito
-    custo = 0
-    for d in rota:
-        custo += dist[atual][d.u] + d.custo
-        atual = d.v
-    custo += dist[atual][deposito]
-    return custo
-
-def melhorar_rotas_pelo_servico(rotas_demandas, dist, pred, deposito, Q, margem_base=0.95):
+def melhorar_rotas_pelo_servico(rotas_demandas, dist, pred, deposito, Q):
     def custo_rota(rota):
         atual = deposito
         custo = 0
@@ -142,32 +89,29 @@ def melhorar_rotas_pelo_servico(rotas_demandas, dist, pred, deposito, Q, margem_
                 combinada = r1 + r2
                 custo_depois = custo_rota(combinada)
 
-                # razão de economia por carga
                 economia = custo_antes - custo_depois
                 if economia > 0:
                     candidatos.append((economia / (carga1 + carga2), economia, i, j, combinada))
 
         if candidatos:
-            # ordena pela maior economia relativa
             candidatos.sort(reverse=True)
             _, _, i, j, nova_rota = candidatos[0]
             rotas[i] = nova_rota
             rotas.pop(j)
             melhorou = True
+
     return rotas
 
 def realocar_rotas_pequenas(rotas_demandas, Q):
     novas_rotas = []
     rotas_pequenas = []
 
-    # Separar rotas pequenas (1 ou 2 serviços)
     for rota in rotas_demandas:
         if len(rota) <= 2:
             rotas_pequenas.append(rota)
         else:
             novas_rotas.append(rota)
 
-    # Tentar realocar serviços das rotas pequenas
     for rota_pequena in rotas_pequenas:
         demanda_total = sum(d.demanda for d in rota_pequena)
         realocado = False
@@ -202,22 +146,6 @@ def two_opt(route, dist):
                 break
     return best
 
-def remover_repeticoes_consecutivas(rota):
-    nova = []
-    for v in rota:
-        if not nova or nova[-1] != v:
-            nova.append(v)
-    return nova
-
-def reconstruir_rota_valida(rota, pred):
-    rota_real = []
-    for i in range(len(rota) - 1):
-        trecho = caminho_minimo(pred, rota[i], rota[i + 1])
-        if not trecho:
-            return []
-        rota_real += trecho[1:] if rota_real else trecho
-    return rota_real
-
 def three_opt(route, dist):
     best = route[:]
     improved = True
@@ -227,10 +155,10 @@ def three_opt(route, dist):
             for j in range(i + 1, len(best) - 2):
                 for k in range(j + 1, len(best) - 1):
                     segments = [
-                        best[:i] + best[i:j][::-1] + best[j:k] + best[k:],               # Case 1
-                        best[:i] + best[i:j] + best[j:k][::-1] + best[k:],               # Case 2
-                        best[:i] + best[j:k] + best[i:j] + best[k:],                     # Case 3
-                        best[:i] + best[j:k][::-1] + best[i:j][::-1] + best[k:],         # Case 4
+                        best[:i] + best[i:j][::-1] + best[j:k] + best[k:],               
+                        best[:i] + best[i:j] + best[j:k][::-1] + best[k:],               
+                        best[:i] + best[j:k] + best[i:j] + best[k:],                     
+                        best[:i] + best[j:k][::-1] + best[i:j][::-1] + best[k:],         
                     ]
                     best_cost = sum(dist[best[x]][best[x+1]] for x in range(len(best) - 1))
                     for s in segments:
@@ -246,3 +174,19 @@ def three_opt(route, dist):
             if improved:
                 break
     return best
+
+def remover_repeticoes_consecutivas(rota):
+    nova = []
+    for v in rota:
+        if not nova or nova[-1] != v:
+            nova.append(v)
+    return nova
+
+def reconstruir_rota_valida(rota, pred):
+    rota_real = []
+    for i in range(len(rota) - 1):
+        trecho = caminho_minimo(pred, rota[i], rota[i + 1])
+        if not trecho:
+            return []
+        rota_real += trecho[1:] if rota_real else trecho
+    return rota_real

@@ -1,87 +1,77 @@
-def read_file(path):
-    with open(path, "r", encoding="utf-8") as arquivo:
-        linhas = arquivo.readlines()
-    header = {}
-    vertices = set()
-    arestas = set()
-    arcos = set()
-    vertices_requeridos = set()
-    arestas_requeridas = set()
-    arcos_requeridos = set()
-    secao_atual = None
-    for linha in linhas:
-        linha = linha.strip()
-        if linha.startswith("Optimal value:") or linha.startswith("Capacity:") or \
-           linha.startswith("Depot Node:") or linha.startswith("#Nodes:") or \
-           linha.startswith("#Edges:") or linha.startswith("#Arcs:") or \
-           linha.startswith("#Required N:") or linha.startswith("#Required E:") or \
-           linha.startswith("#Required A:"):
-            chave, valor = linha.split(":", 1)
-            header[chave.strip()] = valor.strip()
-            continue
-        if not linha or linha.startswith("//"):
-            continue
-        if linha.startswith("ReN."): secao_atual = "ReN"; continue
-        elif linha.startswith("ReE."): secao_atual = "ReE"; continue
-        elif linha.startswith("EDGE"): secao_atual = "EDGE"; continue
-        elif linha.startswith("ReA."): secao_atual = "ReA"; continue
-        elif linha.startswith("ARC"): secao_atual = "ARC"; continue
-        partes = linha.split("\t")
-        try:
-            if secao_atual == "ReN":
-                vertice = int(partes[0].replace("N", ""))
-                demanda = int(partes[1])
-                custo_servico = int(partes[2])
-                vertices_requeridos.add((vertice, (demanda, custo_servico)))
-                vertices.add(vertice)
-            elif secao_atual in ["ReE", "EDGE"]:
-                origem, destino = int(partes[1]), int(partes[2])
-                vertices.update([origem, destino])
-                aresta = (min(origem, destino), max(origem, destino))
-                custo_transporte = int(partes[3])
-                arestas.add((aresta, custo_transporte))
-                if secao_atual == "ReE":
-                    demanda = int(partes[4])
-                    custo_servico = int(partes[5])
-                    arestas_requeridas.add((aresta, (custo_transporte, demanda, custo_servico)))
-            elif secao_atual in ["ReA", "ARC"]:
-                origem, destino = int(partes[1]), int(partes[2])
-                vertices.update([origem, destino])
-                arco = (origem, destino)
-                custo_transporte = int(partes[3])
-                arcos.add((arco, custo_transporte))
-                if secao_atual == "ReA":
-                    demanda = int(partes[4])
-                    custo_servico = int(partes[5])
-                    arcos_requeridos.add((arco, (custo_transporte, demanda, custo_servico)))
-        except (ValueError, IndexError):
-            continue
-    return header, vertices, arestas, arcos, vertices_requeridos, arestas_requeridas, arcos_requeridos
+def read_and_extract(path):
+    with open(path, "r", encoding="utf-8") as file:
+        lines = file.readlines()
 
-def validar_grafo(vertices, arestas, arcos):
-    for (u, v), _ in arestas:
-        if u not in vertices or v not in vertices:
-            print(f"Erro: Aresta ({u}, {v}) inválida.")
-            exit()
-    for (u, v), _ in arcos:
-        if u not in vertices or v not in vertices:
-            print(f"Erro: Arco ({u}, {v}) inválido.")
-            exit()
+    vertices = set()
+    edges = set()
+    arcs = set()
+    req_vertices = set()
+    req_edges = set()
+    req_arcs = set()
+    section = None
+    header = {}
+    id_req = {}
+    id_req_ea = {}
+
+    id_servico = 1
+    for line in lines:
+        line = line.strip()
+        if ":" in line:
+            k, v = line.split(":", 1)
+            header[k.strip()] = v.strip()
+            continue
+        if line.startswith("ReN."): section = "ReN"; continue
+        if line.startswith("ReE."): section = "ReE"; continue
+        if line.startswith("EDGE"): section = "EDGE"; continue
+        if line.startswith("ReA."): section = "ReA"; continue
+        if line.startswith("ARC"): section = "ARC"; continue
+        if not line or line.startswith("//"): continue
+
+        parts = line.split("\t")
+        try:
+            if section == "ReN":
+                v = int(parts[0].replace("N", ""))
+                d, c = int(parts[1]), int(parts[2])
+                req_vertices.add((v, (d, c)))
+                id_req[(v, (d, c))] = id_servico
+                vertices.add(v)
+                id_servico += 1
+            elif section in ["ReE", "EDGE"]:
+                u, v = int(parts[1]), int(parts[2])
+                c = int(parts[3])
+                edge = (min(u, v), max(u, v))
+                edges.add((edge, c))
+                vertices.update([u, v])
+                if section == "ReE":
+                    d, cs = int(parts[4]), int(parts[5])
+                    req_edges.add((edge, (c, d, cs)))
+                    id_req_ea[(edge, (c, d, cs))] = id_servico
+                    id_servico += 1
+            elif section in ["ReA", "ARC"]:
+                u, v = int(parts[1]), int(parts[2])
+                c = int(parts[3])
+                arc = (u, v)
+                arcs.add((arc, c))
+                vertices.update([u, v])
+                if section == "ReA":
+                    d, cs = int(parts[4]), int(parts[5])
+                    req_arcs.add((arc, (c, d, cs)))
+                    id_req_ea[(arc, (c, d, cs))] = id_servico
+                    id_servico += 1
+        except: continue
+
+    return header, vertices, edges, arcs, req_vertices, req_edges, req_arcs, id_req, id_req_ea
 
 def floyd_warshall(vertices, edges, arcs):
-    dist = {v: {u: float('inf') for u in vertices} for v in vertices}
+    dist = {v: {u: float("inf") for u in vertices} for v in vertices}
     pred = {v: {u: None for u in vertices} for v in vertices}
     for v in vertices:
         dist[v][v] = 0
-    for (u, v), dados in edges:
-        cost = dados if isinstance(dados, int) else dados[0]
-        dist[u][v] = cost
-        dist[v][u] = cost
-        pred[u][v] = u
-        pred[v][u] = v
-    for (u, v), dados in arcs:
-        cost = dados if isinstance(dados, int) else dados[0]
-        dist[u][v] = cost
+    for (u, v), c in edges:
+        dist[u][v] = dist[v][u] = c
+        pred[u][v], pred[v][u] = u, v
+    for (u, v), c in arcs:
+        dist[u][v] = c
         pred[u][v] = u
     for k in vertices:
         for i in vertices:
