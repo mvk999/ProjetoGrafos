@@ -1,0 +1,7 @@
+Custo total da solução: 1588
+Total de rotas: 3
+⏱️ Tempo total: 811368700 ns
+clocks totais do algoritimo referência: 2434106100 clocks
+Route 1: 1 2 13 12 23 34 23 24 13 12 1
+Route 2: 1 2 3 14 25 26 27 28 29 39 49 60 59 58 57 56 45 46 47 48 37 36 47 48 37 36 35 24 13 12 1
+Route 3: 1 2 3 14 25 36 47 48 59 60 61 62 63 52 41 40 51 39 50 51 62 63 52 41 30 19 9 10 11 22 21 20 19 18 17 16 15 14 13 12 1
