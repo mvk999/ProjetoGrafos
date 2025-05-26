@@ -108,11 +108,7 @@ for arquivo in instancias_dat:
                 linha += f" (S {t['id']},{t['origem']},{t['destino']})"
             linha += f" (D {ponto_base},1,1)"
             saida.write(linha + "\n")
-        saida.write("\n# Caminhos utilizados:\n")
-        for idr, rota in enumerate(rotas_geradas, 1):
-            trajeto = rota.get('rota_completa', [])
-            saida.write(f"# Rota {idr}: {' -> '.join(map(str, trajeto))}\n")
-
+      
     print("✅ Resultado salvo:", nome_saida)
     if custo_ref is not None:
         print(f"\n📌 Avaliação de Custo:")
