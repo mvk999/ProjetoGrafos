@@ -58,9 +58,11 @@ def read_and_extract(path):
                     req_arcs.add((arc, (c, d, cs)))
                     id_req_ea[(arc, (c, d, cs))] = id_servico
                     id_servico += 1
-        except: continue
+        except:
+            continue
 
     return header, vertices, edges, arcs, req_vertices, req_edges, req_arcs, id_req, id_req_ea
+
 
 def floyd_warshall(vertices, edges, arcs):
     dist = {v: {u: float("inf") for u in vertices} for v in vertices}
@@ -80,6 +82,7 @@ def floyd_warshall(vertices, edges, arcs):
                     dist[i][j] = dist[i][k] + dist[k][j]
                     pred[i][j] = pred[k][j]
     return dist, pred
+
 
 def caminho_minimo(pred, u, v):
     if pred[u][v] is None:

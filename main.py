@@ -1,161 +1,130 @@
 import os
 import time
-import math
 from pathlib import Path
-from leitura import read_and_extract, floyd_warshall
-from heuristicas import algoritmo_clarke_wright, salvar_solucao,grasp_clarke_wright
+from leitura import read_and_extract
+from heuristicas import construir_matriz_dist as gerar_matriz_dist, construir_matriz_preds as gerar_matriz_preds
+from heuristicas import clarke_wright_controller as executar_clarke_wright, custo_rota_individual as avaliar_rota
 
-CPU_GHZ = 3.0
-PASTA_GABARITO = "SolucoesEsperadas"
-PASTA_ENTRADA = "GrafosDeTeste"
-PASTA_SAIDA = "SolucoesGeradas"
-os.makedirs(PASTA_SAIDA, exist_ok=True)
+CPU_GIGAHERTZ = 3.0
+DIR_REFERENCIA = "SolucoesEsperadas"
+DIR_ENTRADA = "GrafosDeTeste"
+DIR_RESULTADOS = "SolucoesGeradas"
+os.makedirs(DIR_RESULTADOS, exist_ok=True)
 
-arquivos = sorted(f for f in os.listdir(PASTA_ENTRADA) if f.endswith(".dat"))
+instancias_dat = sorted(arq for arq in os.listdir(DIR_ENTRADA) if arq.endswith(".dat"))
 
-def analisar_estatisticas(pasta_solucoes, pasta_gabaritos):
-    total_custo_aceito = 0
-    total_rotas_iguais = 0
-    total_custo_e_rotas_iguais = 0
-    alertas_custo_menor = 0
-    alertas_rotas_menor = 0
+def gerar_relatorio_geral(pasta_saida, pasta_base):
+    aceito = igual = perfeitos = melhor_custo = menos_rotas = 0
+    arquivos_gerados = list(Path(pasta_saida).glob("*.txt"))
 
-    arquivos_solucao = list(Path(pasta_solucoes).glob("*.txt"))
-
-    for arq_solucao in arquivos_solucao:
-        nome = arq_solucao.name
-        arq_gabarito = Path(pasta_gabaritos) / nome
-        if not arq_gabarito.exists():
+    for arq in arquivos_gerados:
+        nome_arq = arq.name
+        esperado = Path(pasta_base) / nome_arq
+        if not esperado.exists():
             continue
 
-        with open(arq_solucao, 'r', encoding='utf-8') as f:
-            linhas_sol = f.readlines()
-        with open(arq_gabarito, 'r', encoding='utf-8') as f:
-            linhas_gab = f.readlines()
+        with open(arq, 'r', encoding='utf-8') as g1:
+            linhas_geradas = g1.readlines()
+        with open(esperado, 'r', encoding='utf-8') as g2:
+            linhas_base = g2.readlines()
 
-        custo_sol = int(linhas_sol[0])
-        rotas_sol = int(linhas_sol[1])
-        custo_gab = int(linhas_gab[0])
-        rotas_gab = int(linhas_gab[1])
+        custo_atual = int(linhas_geradas[0])
+        rotas_atual = int(linhas_geradas[1])
+        custo_base = int(linhas_base[0])
+        rotas_base = int(linhas_base[1])
 
-        custo_aceito = custo_sol <= custo_gab
-        rotas_iguais = rotas_sol == rotas_gab
+        if custo_atual <= custo_base:
+            aceito += 1
+        if rotas_atual == rotas_base:
+            igual += 1
+        if custo_atual < custo_base:
+            melhor_custo += 1
+        if rotas_atual < rotas_base:
+            menos_rotas += 1
+        if custo_atual <= custo_base and rotas_atual == rotas_base:
+            perfeitos += 1
 
-        if custo_sol < custo_gab:
-            alertas_custo_menor += 1
-        if rotas_sol < rotas_gab:
-            alertas_rotas_menor += 1
-        if custo_aceito:
-            total_custo_aceito += 1
-        if rotas_iguais:
-            total_rotas_iguais += 1
-        if custo_aceito and rotas_iguais:
-            total_custo_e_rotas_iguais += 1
+    print("\n📊 Resumo das Execuções:")
+    print(f"✔️ Perfeitas (custo e rotas): {perfeitos}")
+    print(f"✔️ Custo aceitável: {aceito}")
+    print(f"✔️ Rotas corretas: {igual}")
+    print(f"⚠️ Custo melhorado: {melhor_custo}")
+    print(f"⚠️ Menos rotas: {menos_rotas}")
 
-    print("\n# Estatísticas gerais da execução:")
-    print(f"# Total de arquivos com custo_aceito=True e rotas_iguais=True: {total_custo_e_rotas_iguais}")
-    print(f"# Total de arquivos com custo_aceito=True: {total_custo_aceito}")
-    print(f"# Total de arquivos com rotas_iguais=True: {total_rotas_iguais}")
-    print(f"# Total de ALERTAS de custo menor: {alertas_custo_menor}")
-    print(f"# Total de ALERTAS de número de rotas menor: {alertas_rotas_menor}")
+for arquivo in instancias_dat:
+    print(f"\n📁 LENDO INSTÂNCIA: {arquivo}")
+    caminho_arquivo = os.path.join(DIR_ENTRADA, arquivo)
+    cabecalho, nos, arestas, arcos, obrigatorios_v, obrigatorios_e, obrigatorios_a, _, _ = read_and_extract(caminho_arquivo)
+    capacidade_veiculo = int(cabecalho["Capacity"])
+    ponto_base = int(cabecalho["Depot Node"])
 
-for nome in arquivos:
-    print(f"\n📂 PROCESSANDO: {nome}")
-    caminho = os.path.join(PASTA_ENTRADA, nome)
+    matriz_dist = gerar_matriz_dist(nos, arestas, arcos)
+    matriz_pred = gerar_matriz_preds(nos, arestas, arcos)
 
-    header, vertices, edges, arcs, req_v, req_e, req_a, id_v, id_ea = read_and_extract(caminho)
-    capacidade = int(header["Capacity"])
-    deposito = int(header["Depot Node"])
-    dist, _ = floyd_warshall(vertices, edges, arcs)
-
-    servicos = []
-    id_serv = 1
-
-for v, (demanda, custo_servico) in req_v:
-    servicos.append({
-        'tipo': 'n',
-        'id_servico': id_serv,
-        'origem': v,
-        'destino': v,
-        'demanda': demanda,
-        'custo_servico': custo_servico
-    })
-    id_serv += 1
-
-for (u, v), dados in req_e:
-    custo_transporte, demanda, custo_servico = dados
-    servicos.append({
-        'tipo': 'e',
-        'id_servico': id_serv,
-        'origem': u,
-        'destino': v,
-        'demanda': demanda,
-        'custo_servico': custo_servico
-    })
-    id_serv += 1
-
-for (u, v), dados in req_a:
-    custo_transporte, demanda, custo_servico = dados
-    servicos.append({
-        'tipo': 'a',
-        'id_servico': id_serv,
-        'origem': u,
-        'destino': v,
-        'demanda': demanda,
-        'custo_servico': custo_servico
-    })
-    id_serv += 1
-
-    nome_gabarito = os.path.join(PASTA_GABARITO, f"sol-{os.path.splitext(nome)[0]}.dat")
-    if os.path.exists(nome_gabarito):
-        with open(nome_gabarito, "r", encoding="utf-8") as gabarito:
-            linhas = gabarito.readlines()
+    caminho_ref = os.path.join(DIR_REFERENCIA, f"sol-{os.path.splitext(arquivo)[0]}.dat")
+    if os.path.exists(caminho_ref):
+        with open(caminho_ref, "r", encoding="utf-8") as ref:
+            linhas = ref.readlines()
             try:
-                custo_esperado = int(linhas[0].strip())
-                rotas_esperadas = int(linhas[1].strip())
-            except (ValueError, IndexError):
-                custo_esperado = None
-                rotas_esperadas = None
+                custo_ref = int(linhas[0].strip())
+                rotas_ref = int(linhas[1].strip())
+            except:
+                custo_ref = rotas_ref = None
     else:
-        custo_esperado = None
-        rotas_esperadas = None
+        custo_ref = rotas_ref = None
 
-    inicio = time.perf_counter_ns()
-    rotas = grasp_clarke_wright(servicos, deposito, dist, capacidade)
-    fim = time.perf_counter_ns()
+    inicio_clk = time.perf_counter_ns()
+    rotas_geradas, tarefas_geradas = executar_clarke_wright(
+        arestas_obrig=obrigatorios_e,
+        arcos_obrig=obrigatorios_a,
+        vertices_obrig=obrigatorios_v,
+        deposito=ponto_base,
+        num_veiculos=-1,
+        capacidade=capacidade_veiculo,
+        matriz_dist=matriz_dist,
+        matriz_preds=matriz_pred,
+        seed=None,
+        embaralhar=True
+    )
+    fim_clk = time.perf_counter_ns()
 
-    if not rotas:
-        print("❌ Solução inválida.")
+    if not rotas_geradas:
+        print("❌ Nenhuma rota válida encontrada.")
         continue
 
-    tempo_ns = fim - inicio
-    clocks = int(tempo_ns * CPU_GHZ)
-    timestamp = int(time.time())
+    duracao_ns = fim_clk - inicio_clk
+    ciclos_clk = int(duracao_ns * CPU_GIGAHERTZ)
+    timestamp_exec = int(time.time())
+    custo_total_rotas = sum(avaliar_rota(rota, tarefas_geradas, matriz_dist) for rota in rotas_geradas)
 
-    saida_nome = os.path.join(PASTA_SAIDA, f"sol-{os.path.splitext(nome)[0]}.txt")
-    salvar_solucao(
-        nome_arquivo=saida_nome,
-        rotas=rotas,
-        matriz_distancias=dist,
-        deposito=deposito,
-        tempo_referencia_execucao=clocks,
-        tempo_referencia_solucao=timestamp
-    )
+    nome_saida = os.path.join(DIR_RESULTADOS, f"sol-{os.path.splitext(arquivo)[0]}.txt")
+    with open(nome_saida, "w", encoding="utf-8") as saida:
+        saida.write(f"{custo_total_rotas}\n{len(rotas_geradas)}\n{ciclos_clk}\n{timestamp_exec}\n")
+        for idr, rota in enumerate(rotas_geradas, 1):
+            custo_atual = avaliar_rota(rota, tarefas_geradas, matriz_dist)
+            linha = f"0 1 {idr} {rota['demanda']} {custo_atual} {len(rota['tarefas'])+2} (D {ponto_base},1,1)"
+            for tid in rota['tarefas']:
+                t = tarefas_geradas[tid]
+                linha += f" (S {t['id']},{t['origem']},{t['destino']})"
+            linha += f" (D {ponto_base},1,1)"
+            saida.write(linha + "\n")
+        saida.write("\n# Caminhos utilizados:\n")
+        for idr, rota in enumerate(rotas_geradas, 1):
+            trajeto = rota.get('rota_completa', [])
+            saida.write(f"# Rota {idr}: {' -> '.join(map(str, trajeto))}\n")
 
-    print("✅ Arquivo gerado:", saida_nome)
-
-    print("\n📌 Comparação com GABARITO G0:")
-    if custo_esperado != float('inf'):
-        print(f"🔸 Custo gerado:   {round(sum(int(linhas.split()[4]) for linhas in open(saida_nome).readlines()[4:]))}")
-        print(f"🔸 Custo esperado: {custo_esperado}")
-        print(f"🔸 Diferença:      {round(sum(int(linhas.split()[4]) for linhas in open(saida_nome).readlines()[4:])) - custo_esperado}")
+    print("✅ Resultado salvo:", nome_saida)
+    if custo_ref is not None:
+        print(f"\n📌 Avaliação de Custo:")
+        print(f"🔸 Encontrado: {custo_total_rotas}")
+        print(f"🔸 Esperado:  {custo_ref}")
+        print(f"🔸 Diferença: {custo_total_rotas - custo_ref}")
     else:
-        print("❗ Gabarito não encontrado para comparar custos.")
+        print("❗ Nenhum gabarito de custo disponível.")
 
-    if rotas_esperadas is not None:
-        print(f"🔹 Rotas geradas:   {len(rotas)}")
-        print(f"🔹 Rotas esperadas: {rotas_esperadas}")
-        print(f"🔹 Diferença:       {len(rotas) - rotas_esperadas}")
+    if rotas_ref is not None:
+        print(f"🔹 Rotas geradas:   {len(rotas_geradas)}")
+        print(f"🔹 Rotas esperadas: {rotas_ref}")
+        print(f"🔹 Diferença:       {len(rotas_geradas) - rotas_ref}")
     else:
-        print("❗ Gabarito não encontrado para comparar número de rotas.")
-
+        print("❗ Nenhum gabarito de rotas disponível.")

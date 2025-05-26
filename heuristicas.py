@@ -1,216 +1,203 @@
 import random
-import copy
+import time
+import heapq
 
-def grasp_clarke_wright(
-    servicos,
-    deposito,
-    matriz_distancias,
-    capacidade,
-    max_iter=50,
-    alpha=0.3
-):
-    melhor_solucao = None
-    melhor_custo = float('inf')
+def busca_dijkstra(inicio, liga_arestas, liga_arcos, nos):
+    nos_ids = {v if isinstance(v, int) else v[0] for v in nos}
+    custos = {v: float('inf') for v in nos_ids}
+    custos[inicio] = 0
+    predecessores = {v: None for v in nos_ids}
+    fila = [(0, inicio)]
 
-    for _ in range(max_iter):
-        # 1. Construção gulosa randomizada
-        rotas, demandas = construir_rotas_iniciais(servicos, deposito, matriz_distancias, capacidade)
-        savings = calcular_savings(rotas, matriz_distancias, deposito)
+    ligacoes = set()
+    for (u, v), custo in liga_arestas:
+        ligacoes.add((u, v, custo, False))
+    for (u, v), custo in liga_arcos:
+        ligacoes.add((u, v, custo, True))
 
-        # Lista restrita de candidatos (LRC)
-        savings_lrc = []
-        if savings:
-            max_s = savings[0][0]
-            min_s = savings[-1][0]
-            limite = max_s - alpha * (max_s - min_s)
-            savings_lrc = [s for s in savings if s[0] >= limite]
+    while fila:
+        atual_custo, atual_no = heapq.heappop(fila)
+        if atual_custo > custos[atual_no]:
+            continue
 
-        while savings_lrc:
-            s, i, j = random.choice(savings_lrc)
-            if rotas[i] and rotas[j]:
-                tentar_fundir_rotas(rotas, demandas, i, j, capacidade)
-            # Atualiza savings e LRC
-            rotas_nao_vazias = [r for r in rotas if r]
-            savings = calcular_savings(rotas_nao_vazias, matriz_distancias, deposito)
-            if savings:
-                max_s = savings[0][0]
-                min_s = savings[-1][0]
-                limite = max_s - alpha * (max_s - min_s)
-                savings_lrc = [s for s in savings if s[0] >= limite]
+        for u, v, custo, eh_arco in ligacoes:
+            if u == atual_no:
+                viz = v
+            elif not eh_arco and v == atual_no:
+                viz = u
             else:
-                break
+                continue
 
-        # Remove rotas vazias
-        rotas = [r for r in rotas if r]
+            novo_custo = atual_custo + custo
+            if novo_custo < custos[viz]:
+                custos[viz] = novo_custo
+                predecessores[viz] = atual_no
+                heapq.heappush(fila, (novo_custo, viz))
 
-        # 2. Busca local (2-opt)
-        rotas = [aplicar_2opt_rota(rota, matriz_distancias, deposito) for rota in rotas]
+    return custos, predecessores
 
-        # 3. Avalia solução
-        custo_total = sum(calcular_custo_rota(rota, matriz_distancias, deposito) for rota in rotas)
-        if custo_total < melhor_custo:
-            melhor_custo = custo_total
-            melhor_solucao = copy.deepcopy(rotas)
+def construir_matriz_dist(nos, liga_arestas, liga_arcos):
+    matriz = {}
+    for no in nos:
+        distancias, _ = busca_dijkstra(no, liga_arestas, liga_arcos, nos)
+        matriz[no] = {dest: distancias.get(dest, float('inf')) for dest in nos}
+    return matriz
 
-    return melhor_solucao
+def construir_matriz_preds(nos, liga_arestas, liga_arcos):
+    matriz = {}
+    for no in nos:
+        _, preds = busca_dijkstra(no, liga_arestas, liga_arcos, nos)
+        matriz[no] = {dest: preds.get(dest, None) for dest in nos}
+    return matriz
 
-def construir_rotas_iniciais(servicos, deposito, matriz_distancias, capacidade):
+def caminho_otimo(preds, origem, destino):
+    caminho = []
+    atual = destino
+    while atual is not None:
+        caminho.insert(0, atual)
+        atual = preds[origem].get(atual)
+    return caminho
+
+def gerar_tarefas(arestas_obrig, arcos_obrig, vertices_obrig):
+    tarefas = []
+    for (u, v), (custo, dem, serv) in arestas_obrig:
+        tarefas.append({'tipo': 'aresta', 'origem': u, 'destino': v, 'demanda': dem, 'servico': serv, 'custo_t': custo})
+    for (u, v), (custo, dem, serv) in arcos_obrig:
+        tarefas.append({'tipo': 'arco', 'origem': u, 'destino': v, 'demanda': dem, 'servico': serv, 'custo_t': custo})
+    for v, (dem, serv) in vertices_obrig:
+        tarefas.append({'tipo': 'vertice', 'origem': v, 'destino': v, 'demanda': dem, 'servico': serv, 'custo_t': 0})
+    return tarefas
+
+def custos_entre_tarefas(tarefas, matriz):
+    custos = {}
+    for i, t1 in enumerate(tarefas):
+        for j, t2 in enumerate(tarefas):
+            if i == j:
+                continue
+            origem = t1['destino'] if t1['tipo'] != 'vertice' else t1['origem']
+            destino = t2['origem']
+            custo = matriz[origem][destino] + t1['servico'] + t2['servico']
+            custos[(i, j)] = custo
+    return custos
+
+def criar_rota(tarefas, indices, deposito, matriz_preds):
+    rota = [deposito]
+    for i, idx in enumerate(indices):
+        tarefa = tarefas[idx]
+        origem = tarefa['origem']
+        if i == 0:
+            rota += caminho_otimo(matriz_preds, rota[-1], origem)[1:]
+        else:
+            anterior = tarefas[indices[i - 1]]
+            ult = anterior['destino'] if anterior['tipo'] != 'vertice' else anterior['origem']
+            rota += caminho_otimo(matriz_preds, ult, origem)[1:]
+        if tarefa['tipo'] != 'vertice':
+            rota.append(tarefa['destino'])
+    fim = tarefas[indices[-1]]
+    ult = fim['destino'] if fim['tipo'] != 'vertice' else fim['origem']
+    rota += caminho_otimo(matriz_preds, ult, deposito)[1:]
+    return rota
+
+def rotas_iniciais(tarefas, deposito, capacidade, matriz_preds):
     rotas = []
-    demandas = []
-    for serv in servicos:
-        demanda = serv['demanda']
-        if demanda > capacidade:
-            raise ValueError(f"Serviço {serv['id_servico']} demanda maior que capacidade do veículo!")
-        rotas.append([serv])
-        demandas.append(demanda)
-    return rotas, demandas
-
-def calcular_savings(rotas, matriz_distancias, deposito):
-    savings = []
-    n = len(rotas)
-    for i in range(n):
-        serv_i = rotas[i][0]
-        origem_i = serv_i['origem']
-        destino_i = serv_i['destino']
-
-        for j in range(i+1, n):
-            serv_j = rotas[j][0]
-            origem_j = serv_j['origem']
-            destino_j = serv_j['destino']
-
-            # Savings entre o destino de i e a origem de j
-            s = (matriz_distancias[deposito][origem_i] +
-                 matriz_distancias[destino_j][deposito] -
-                 matriz_distancias[destino_i][origem_j])
-            savings.append((s, i, j))
-    savings.sort(key=lambda x: x[0], reverse=True)
-    return savings
-
-def tentar_fundir_rotas(rotas, demandas, idx_i, idx_j, capacidade):
-    rota_i = rotas[idx_i]
-    rota_j = rotas[idx_j]
-
-    if not rota_i or not rota_j:
-        return False
-
-    # Só funde se o destino da última de i for igual à origem da primeira de j
-    if rota_i[-1]['destino'] != rota_j[0]['origem']:
-        return False
-
-    demanda_total = demandas[idx_i] + demandas[idx_j]
-    if demanda_total > capacidade:
-        return False
-
-    rotas[idx_i] = rota_i + rota_j
-    demandas[idx_i] = demanda_total
-    rotas[idx_j] = []
-    demandas[idx_j] = 0
-    return True
-
-def aplicar_2opt_rota(rota, matriz_distancias, deposito):
-    if len(rota) < 3:
-        return rota  # Não há o que otimizar
-
-    melhor_rota = rota[:]
-    melhor_custo = calcular_custo_rota(melhor_rota, matriz_distancias, deposito)
-    melhorou = True
-
-    while melhorou:
-        melhorou = False
-        for i in range(1, len(rota) - 1):
-            for j in range(i + 1, len(rota)):
-                nova_rota = melhor_rota[:i] + melhor_rota[i:j][::-1] + melhor_rota[j:]
-                novo_custo = calcular_custo_rota(nova_rota, matriz_distancias, deposito)
-                if novo_custo < melhor_custo:
-                    melhor_rota = nova_rota
-                    melhor_custo = novo_custo
-                    melhorou = True
-        rota = melhor_rota
-    return melhor_rota
-
-def calcular_custo_rota(rota, matriz_distancias, deposito):
-    if not rota:
-        return 0
-    destinos = [serv['destino'] for serv in rota]
-    custo = matriz_distancias[deposito][destinos[0]]
-    for i in range(len(destinos) - 1):
-        custo += matriz_distancias[destinos[i]][destinos[i + 1]]
-    custo += matriz_distancias[destinos[-1]][deposito]
-    return custo
-
-def algoritmo_clarke_wright(servicos, deposito, matriz_distancias, capacidade):
-    rotas, demandas = construir_rotas_iniciais(servicos, deposito, matriz_distancias, capacidade)
-    savings = calcular_savings(rotas, matriz_distancias, deposito)
-
-    for s, i, j in savings:
-        if rotas[i] and rotas[j]:
-            tentar_fundir_rotas(rotas, demandas, i, j, capacidade)
-
-    # Remove rotas vazias
-    rotas = [r for r in rotas if r]
-
-    # Aplica 2-opt em cada rota para melhorar o custo
-    rotas = [aplicar_2opt_rota(rota, matriz_distancias, deposito) for rota in rotas]
-
+    for idx, tarefa in enumerate(tarefas):
+        if tarefa['demanda'] > capacidade:
+            continue
+        rota = criar_rota(tarefas, [idx], deposito, matriz_preds)
+        rotas.append({'tarefas': [idx], 'demanda': tarefa['demanda'], 'rota_completa': rota})
     return rotas
 
-def salvar_solucao(
-    nome_arquivo,
-    rotas,
-    matriz_distancias,
-    deposito=0,
-    tempo_referencia_execucao=0,
-    tempo_referencia_solucao=0
-):
-    custo_total_solucao = 0
-    total_rotas = len(rotas)
-    linhas_rotas = []
-
-    for idx_rota, rota in enumerate(rotas, start=1):
-        servicos_unicos = {}
-        demanda_rota = 0
-        custo_servico_rota = 0
-        custo_transporte_rota = 0
-
-        destinos = []
-        for serv in rota:
-            id_s = serv["id_servico"]
-            if id_s not in servicos_unicos:
-                servicos_unicos[id_s] = serv
-                demanda_rota += serv["demanda"]
-                custo_servico_rota += serv["custo_servico"]
-            destinos.append(serv["destino"])
-
-        if destinos:
-            custo_transporte_rota += matriz_distancias[deposito][destinos[0]]
-            for i in range(len(destinos) - 1):
-                custo_transporte_rota += matriz_distancias[destinos[i]][destinos[i + 1]]
-            custo_transporte_rota += matriz_distancias[destinos[-1]][deposito]
-
-        custo_rota = custo_servico_rota + custo_transporte_rota
-        custo_total_solucao += custo_rota
-
-        total_visitas = 2 + len(servicos_unicos)
-
-        linha = f"0 1 {idx_rota} {demanda_rota} {custo_rota} {total_visitas} (D {deposito},1,1)"
-
-        servicos_impressos = set()
-        for serv in rota:
-            id_s = serv["id_servico"]
-            if id_s in servicos_impressos:
+def calcular_savings(tarefas, custos_t, matriz, deposito, capacidade):
+    savings = []
+    for i, t1 in enumerate(tarefas):
+        for j, t2 in enumerate(tarefas):
+            if i >= j:
                 continue
-            servicos_impressos.add(id_s)
-            linha += f" (S {id_s},{serv['origem']},{serv['destino']})"
+            if t1['demanda'] + t2['demanda'] > capacidade:
+                continue
+            c1 = matriz[deposito][t1['origem']]
+            c2 = matriz[t2['destino']][deposito] if t2['tipo'] != 'vertice' else matriz[t2['origem']][deposito]
+            s = c1 + c2 - custos_t[(i, j)]
+            savings.append(((i, j), s))
+    return savings
 
-        linha += f" (D {deposito},1,1)"
-        linhas_rotas.append(linha)
+def ordenar_savings(savings, rng=None):
+    if rng:
+        rng.shuffle(savings)
+    else:
+        savings.sort(key=lambda x: x[1], reverse=True)
+    return savings
 
-    with open(nome_arquivo, "w", encoding="utf-8") as f:
-        f.write(f"{custo_total_solucao}\n")
-        f.write(f"{total_rotas}\n")
-        f.write(f"{tempo_referencia_execucao}\n")
-        f.write(f"{tempo_referencia_solucao}\n")
-        for linha in linhas_rotas:
-            f.write(linha + "\n")
+def pode_unir(rota1, rota2, capacidade):
+    return (rota1['demanda'] + rota2['demanda']) <= capacidade
 
-    print(f"Solução salva em '{nome_arquivo}' com {total_rotas} rotas e custo total {custo_total_solucao}.")
+def unir_rotas(rota1, rota2, tarefas, deposito, matriz_preds):
+    novas = rota1['tarefas'] + rota2['tarefas']
+    return {
+        'tarefas': novas,
+        'demanda': rota1['demanda'] + rota2['demanda'],
+        'rota_completa': criar_rota(tarefas, novas, deposito, matriz_preds)
+    }
+
+def aplicar_savings(rotas, savings, capacidade, tarefas, deposito, matriz_preds, usar_fusao_bidirecional=False):
+    for (i, j), _ in savings:
+        r1 = next((r for r in rotas if r['tarefas'] and r['tarefas'][-1] == i), None)
+        r2 = next((r for r in rotas if r['tarefas'] and r['tarefas'][0] == j), None)
+        if r1 and r2 and r1 != r2:
+            if pode_unir(r1, r2, capacidade):
+                nova = unir_rotas(r1, r2, tarefas, deposito, matriz_preds)
+                rotas.remove(r1)
+                rotas.remove(r2)
+                rotas.append(nova)
+            elif usar_fusao_bidirecional and pode_unir(r2, r1, capacidade):
+                nova = unir_rotas(r2, r1, tarefas, deposito, matriz_preds)
+                rotas.remove(r1)
+                rotas.remove(r2)
+                rotas.append(nova)
+    return rotas
+
+def refinar_rota_2opt(rota, matriz):
+    caminho = rota['rota_completa']
+    melhor_caminho = caminho[:]
+    melhor_custo = sum(matriz[caminho[i]][caminho[i+1]] for i in range(len(caminho)-1))
+    for i in range(1, len(caminho) - 2):
+        for j in range(i+1, len(caminho) - 1):
+            novo = caminho[:i] + caminho[i:j+1][::-1] + caminho[j+1:]
+            custo = sum(matriz[novo[k]][novo[k+1]] for k in range(len(novo)-1))
+            if custo < melhor_custo:
+                melhor_caminho = novo
+                melhor_custo = custo
+    rota['rota_completa'] = melhor_caminho
+    return rota
+
+def custo_rota_individual(rota, tarefas, matriz):
+    custo = sum(tarefas[t]['servico'] for t in rota['tarefas'])
+    caminho = rota['rota_completa']
+    custo_transp = sum(matriz[caminho[i]][caminho[i + 1]] for i in range(len(caminho) - 1))
+    desloc_serv = sum(tarefas[t]['custo_t'] for t in rota['tarefas'])
+    return custo + (custo_transp - desloc_serv)
+
+def custo_total(rotas, tarefas, matriz):
+    return sum(custo_rota_individual(r, tarefas, matriz) for r in rotas)
+
+def clarke_wright_controller(arestas_obrig, arcos_obrig, vertices_obrig,
+                              deposito, num_veiculos, capacidade,
+                              matriz_dist, matriz_preds,
+                              seed=None, embaralhar=False,
+                              usar_fusao_bidirecional=False,
+                              refinar_2opt=False):
+    rng = random.Random(seed) if seed else None
+    tarefas = gerar_tarefas(arestas_obrig, arcos_obrig, vertices_obrig)
+    for i, t in enumerate(tarefas):
+        t['id'] = i
+    if embaralhar and rng:
+        rng.shuffle(tarefas)
+    custos_t = custos_entre_tarefas(tarefas, matriz_dist)
+    rotas = rotas_iniciais(tarefas, deposito, capacidade, matriz_preds)
+    savings = calcular_savings(tarefas, custos_t, matriz_dist, deposito, capacidade)
+    savings = ordenar_savings(savings, rng)
+    rotas = aplicar_savings(rotas, savings, capacidade, tarefas, deposito, matriz_preds, usar_fusao_bidirecional)
+    if refinar_2opt:
+        for rota in rotas:
+            refinar_rota_2opt(rota, matriz_dist)
+    return rotas, tarefas
