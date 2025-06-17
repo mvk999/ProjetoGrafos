@@ -4,6 +4,8 @@ from pathlib import Path
 from leitura import read_and_extract
 from heuristicas import construir_matriz_dist as gerar_matriz_dist, construir_matriz_preds as gerar_matriz_preds
 from heuristicas import clarke_wright_controller as executar_clarke_wright, custo_rota_individual as avaliar_rota
+from memetico import executar_memetico, salvar_solucao_memetica
+
 
 CPU_GIGAHERTZ = 3.0
 DIR_REFERENCIA = "SolucoesEsperadas"
@@ -74,18 +76,17 @@ for arquivo in instancias_dat:
         custo_ref = rotas_ref = None
 
     inicio_clk = time.perf_counter_ns()
-    rotas_geradas, tarefas_geradas = executar_clarke_wright(
-        arestas_obrig=obrigatorios_e,
-        arcos_obrig=obrigatorios_a,
-        vertices_obrig=obrigatorios_v,
-        deposito=ponto_base,
-        num_veiculos=-1,
-        capacidade=capacidade_veiculo,
-        matriz_dist=matriz_dist,
-        matriz_preds=matriz_pred,
-        seed=None,
-        embaralhar=True
-    )
+    rotas_geradas, tarefas_geradas = executar_memetico(
+    caminho_arquivo=caminho_arquivo,
+    capacidade=capacidade_veiculo,
+    deposito=ponto_base,
+    matriz_dist=matriz_dist,
+    matriz_pred=matriz_pred,
+    obrig_v=obrigatorios_v,
+    obrig_e=obrigatorios_e,
+    obrig_a=obrigatorios_a
+)
+
     fim_clk = time.perf_counter_ns()
 
     if not rotas_geradas:
@@ -98,16 +99,16 @@ for arquivo in instancias_dat:
     custo_total_rotas = sum(avaliar_rota(rota, tarefas_geradas, matriz_dist) for rota in rotas_geradas)
 
     nome_saida = os.path.join(DIR_RESULTADOS, f"sol-{os.path.splitext(arquivo)[0]}.txt")
-    with open(nome_saida, "w", encoding="utf-8") as saida:
-        saida.write(f"{custo_total_rotas}\n{len(rotas_geradas)}\n{ciclos_clk}\n{timestamp_exec}\n")
-        for idr, rota in enumerate(rotas_geradas, 1):
-            custo_atual = avaliar_rota(rota, tarefas_geradas, matriz_dist)
-            linha = f"0 1 {idr} {rota['demanda']} {custo_atual} {len(rota['tarefas'])+2} (D {ponto_base},1,1)"
-            for tid in rota['tarefas']:
-                t = tarefas_geradas[tid]
-                linha += f" (S {t['id']},{t['origem']},{t['destino']})"
-            linha += f" (D {ponto_base},1,1)"
-            saida.write(linha + "\n")
+    salvar_solucao_memetica(
+    nome_arquivo=nome_saida,
+    rotas=rotas_geradas,
+    tarefas=tarefas_geradas,
+    deposito=ponto_base,
+    matriz_dist=matriz_dist,
+    ciclos_clk=ciclos_clk,
+    timestamp_exec=timestamp_exec
+)
+
       
     print("✅ Resultado salvo:", nome_saida)
     if custo_ref is not None:
