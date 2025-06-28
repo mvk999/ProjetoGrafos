@@ -1,6 +1,6 @@
 import random
 
-def grasp_path_scanning(tarefas, matriz_dist, deposito, rotas_esperadas, capacidade, iteracoes=5, rcl_size=3, seed_base=42):
+def grasp_path_scanning(tarefas, matriz_dist, deposito, rotas_esperadas, capacidade, iteracoes=8, rcl_size=3, seed_base=42):
     melhores_rotas = None
     melhor_custo_total = float('inf')
     criterios = ['proximo', 'distante', 'maior_demanda', 'menor_ratio', 'random']
