@@ -16,8 +16,9 @@
 #
 # O resultado final é uma solução de boa qualidade para cada instância, respeitando as restrições de capacidade e cobrindo todas as tarefas obrigatórias.
 # Tendo como principal objetivo a qualidade de cada instância e por ser um algoritmo com uma complexidade alta seu tempo de execução é limitado a 240 segundos.
-# ainda estou avaliando se esse delimitador de tempo é o ideal, mas por enquanto vai ficar assim.
+# ainda estou avaliando se esse delimitador de tempo é o ideal, mas por enquanto vai ficar assim(mt em duvida nisso)
 # -------------------------------------------------------------------------
+
 
 import os
 import time
