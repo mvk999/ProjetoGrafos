@@ -79,7 +79,7 @@ ProjetoGrafos/
 ├── melhoramento_local.py      # Realocação de tarefas entre rotas
 ├── GrafosDeTeste/             # Instâncias de entrada
 ├── SolucoesEsperadas/         # Gabaritos de referência
-├── SolucoesGeradas/           # Saídas do seu algoritmo
+├── G19/           # Saídas do seu algoritmo
 ```
 
 ---
